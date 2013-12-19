@@ -1,0 +1,11 @@
+This is a (clients) <-> ROUTER <--> DEALER <-> (workers) model with Zeromq framework
+and it derived from zguide/examples/Python/asyncrrhandlers.py and mtserver.py example
+
+I like to use multiprocess to be my worker's running environment( multithread running is suppoted either )
+The main.py file is the server with workers initialize and wait client(t-04-client.py) to be connected
+
+I used it to be my word processor framework, to manage the worker
+which will process my html -- crawler crawl page from internet.
+
+The word processor can deal with many format html structure.
+
