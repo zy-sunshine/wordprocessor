@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+# file /etc/init.d/goagentd
+# goagentd      Start up the goagentd server daemon
+#
+# chkconfig: 2345 55 25
+# description: goagentd
+#
+# processname: proxy.py
+# pidfile: /var/run/goagentd.pid
+
+### BEGIN INIT INFO
+# Provides: goagentd
+# Required-Start: $local_fs $network $syslog
+# Required-Stop: $local_fs $syslog
+# Should-Start: $syslog
+# Should-Stop: $network $syslog
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: GoAgent
+# Description:       GoAgent GAE Proxy Server.
+### END INIT INFO
+
+# source function library
+if [ -f /etc/rc.d/init.d/functions ]; then
+    . /etc/rc.d/init.d/functions
+fi
+
+prog="wordpd"
+PYTHON=/usr/bin/python
+proxy_dir=/home/netsec/work/wordprocessor
+proxy=$proxy_dir/wordp.py
+proxy_exit=$proxy_dir/wordp-exit.py
+log=$proxy_dir/wordp.log
+lock=/var/lock/$prog
+
+runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+
+start()
+{
+   echo $"Starting $prog"
+   if [ -f $lock ]; then
+      echo "$prog is running, please stop it and start."
+      return
+   fi
+   [ -f "$log" ] && mv -f "$log" "$log.old"
+   $PYTHON $proxy 1>&$log 2>&1 &
+   touch $lock
+}
+
+stop()
+{
+   echo $"Stopping $prog"
+   if [ ! -f $lock ]; then
+      echo "$prog is not running, please run it first."
+      return
+   fi
+   $PYTHON $proxy_exit 1>/dev/null 2>&1 &
+   x=0
+   while [ "$x" -lt 10 -a -S /tmp/wordp.server.exit.ipc ] ;
+   do
+      x=$((x+1))
+      echo -n "."
+      sleep 1
+   done
+   if [ -S /tmp/wordp.client.ipc ];then
+      kill $(ps aux | grep "$proxy" | awk '{print $2}')
+   fi
+   rm -f $lock
+}
+
+restart() {
+   stop
+   start
+}
+
+
+case "$1" in
+   start)
+       start
+       ;;
+   stop)
+       stop
+       ;;
+   restart)
+       restart
+       ;;
+   *)
+echo $"Usage: $0 {start|stop|restart}"
+exit 0
+esac

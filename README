@@ -9,3 +9,10 @@ which will process my html -- crawler crawl page from internet.
 
 The word processor can deal with many format html structure.
 
+
+TODO:
+    1. the worker processes pool is not nessessary
+    2. the worker's thread pool have some problem, but we can ignore it until
+       we use this framework in large situation.
+    3. config file, should be defined to a proper structure.
+
