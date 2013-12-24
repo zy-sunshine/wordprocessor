@@ -1,0 +1,44 @@
+[wordp]
+wordp_base=/home/netsec/work/wordprocessor
+use_multi_process=True
+url_worker="ipc:///tmp/_wordp.worker.ipc"
+#url_worker = "inproc://workers"
+url_client="ipc:///tmp/wordp.client.ipc"
+#url_client = "tcp://*:5555"
+url_exitsocket="ipc:///tmp/wordp.server.exit.ipc"
+url_worker_cmd="ipc:///tmp/_wordp.worker.cmd.ipc"
+worker_num=2
+thread_num_of_worker=4
+
+[weixin]
+token=<your weixin token>
+appid=<your weixin appid>
+secret=<your weixin ...>
+retry_time=3
+zmq_req_retry_time=3
+# 2500ms => 2.5s
+zmq_req_request_timeout=2500
+# Same with wordp.url_client to communicate with wordp task manager
+zmq_req_server_url="ipc:///tmp/wordp.client.ipc"
+# Same with client0.name that indicate using client0 to processing your task.
+worker_name=weixin
+admin_mail=zy.netsecATgmail.com
+
+[clients]
+clients_list=client0,
+
+[client0]
+name=weixin
+# Your client exe file path, be sure that file can be executed.
+exe_path=/home/netsec/work/wordprocessor/clients/mywpcrawler.py
+crawler_class=18
+webserver_doc_dir='/home/netsec/www'
+webserver_image_dir='/home/netsec/www/images'
+webserver_image_host='http://www.example.org/images'
+wp_xmlrpc_url='http://www.example.org/xmlrpc.php'
+wp_xmlrpc_user=<your wordpress user name>
+wp_xmlrpc_pass=<your wordpress user password>
+
+[mylogging]
+mylogging_base=/home/netsec/work/wordprocessor/mylogging
+
