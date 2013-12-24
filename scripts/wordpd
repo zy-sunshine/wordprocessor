@@ -1,25 +1,5 @@
 #!/bin/bash
 #
-# file /etc/init.d/goagentd
-# goagentd      Start up the goagentd server daemon
-#
-# chkconfig: 2345 55 25
-# description: goagentd
-#
-# processname: proxy.py
-# pidfile: /var/run/goagentd.pid
-
-### BEGIN INIT INFO
-# Provides: goagentd
-# Required-Start: $local_fs $network $syslog
-# Required-Stop: $local_fs $syslog
-# Should-Start: $syslog
-# Should-Stop: $network $syslog
-# Default-Start: 2 3 4 5
-# Default-Stop: 0 1 6
-# Short-Description: GoAgent
-# Description:       GoAgent GAE Proxy Server.
-### END INIT INFO
 
 # source function library
 if [ -f /etc/rc.d/init.d/functions ]; then
@@ -28,7 +8,18 @@ fi
 
 prog="wordpd"
 PYTHON=/usr/bin/python
-proxy_dir=/home/netsec/work/wordprocessor
+if [ ! -f /etc/wordp.ini ]; then
+    echo 'Please link your config file to /etc/wordp.ini'
+    exit -1
+fi
+proxy_dir=$(sed -n 's/^wordp_base=\([^ ]*.*\)/\1/p' < /etc/wordp.ini)
+if [ "x$proxy_dir" == "x" -o ! -d "$proxy_dir" ]; then
+    echo 'Get base directory(from /etc/wordp.ini) is "'$proxy_dir'"'
+    if [ ! -d $proxy_dir ]; then
+        echo "Base directory is not exists"
+    fi
+    exit -1
+fi
 proxy=$proxy_dir/wordp.py
 proxy_exit=$proxy_dir/wordp-exit.py
 log=$proxy_dir/wordp.log
@@ -44,8 +35,12 @@ start()
       return
    fi
    [ -f "$log" ] && mv -f "$log" "$log.old"
-   $PYTHON $proxy 1>&$log 2>&1 &
+   $PYTHON $proxy 1>$log  2>&1 &
    touch $lock
+   sleep 1
+   for file in /tmp/wordp.client.ipc /tmp/wordp.server.exit.ipc; do
+      chmod g+w $file
+   done
 }
 
 stop()

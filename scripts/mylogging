@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+
+# source function library
+if [ -f /etc/rc.d/init.d/functions ]; then
+    . /etc/rc.d/init.d/functions
+fi
+
+prog="mylogging"
+PYTHON=/usr/bin/python
+if [ ! -f /etc/wordp.ini ]; then
+    echo 'Please link your config file to /etc/wordp.ini'
+    exit -1
+fi
+proxy_dir=$(sed -n 's/^mylogging_base=\([^ ]*.*\)/\1/p' < /etc/wordp.ini)
+if [ "x$proxy_dir" == "x" -o ! -d "$proxy_dir" ]; then
+    echo 'Get base directory(from /etc/wordp.ini) is "'$proxy_dir'"'
+    if [ ! -d $proxy_dir ]; then
+        echo "Base directory is not exists"
+    fi
+    exit -1
+fi
+proxy=$proxy_dir/logger-socket-server.py
+log=$proxy_dir/logger-socket-server.system.log
+lock=/var/lock/$prog
+
+runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+
+start()
+{
+   echo $"Starting $prog: "
+   if [ -f $lock ]; then
+      echo "$prog is running, please stop it and start."
+      return
+   fi
+   [ -f "$log" ] && mv -f "$log" "$log.old"
+   $PYTHON $proxy 1>&$log 2>&1 &
+   touch $lock
+}
+
+stop()
+{
+   echo $"Stopping $prog: "
+   kill $(ps aux | grep "$proxy" | awk '{print $2}')
+   rm -f $lock
+}
+
+restart() {
+   stop
+   start
+}
+
+
+case "$1" in
+   start)
+       start
+       ;;
+   stop)
+       stop
+       ;;
+   restart)
+       restart
+       ;;
+   *)
+echo $"Usage: $0 {start|stop|restart}"
+exit 0
+esac

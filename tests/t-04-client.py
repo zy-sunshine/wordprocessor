@@ -6,6 +6,8 @@ def client(idx):
     client = context.socket(zmq.REQ)
     #client.connect("tcp://localhost:5555")
     client.connect("ipc:///tmp/wordp.client.ipc")
+    poll = zmq.Poller()
+    poll.register(client, zmq.POLLIN)
     print 'Start send:'
     client.send('Hello')
     message = client.recv()

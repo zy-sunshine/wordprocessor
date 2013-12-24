@@ -6,34 +6,49 @@
 
 """
 import os, sys
+CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(CUR_DIR, 'libs'))
 import time
 import threading
 import zmq
 import multiprocessing
 from commandwrapper import WrapCommand
+import dict4ini
 
-USE_MULTI_PROCESS = False
+import logging, logging.handlers
+rootLogger = logging.getLogger('')
+rootLogger.setLevel(logging.DEBUG)
+socketHandler = logging.handlers.SocketHandler('localhost',
+                    logging.handlers.DEFAULT_TCP_LOGGING_PORT)
+rootLogger.addHandler(socketHandler)
 
-#url_worker = "inproc://workers"
-url_worker = "ipc:///tmp/_wordp.worker.ipc"
-#url_client = "tcp://*:5555"
-url_client = "ipc:///tmp/wordp.client.ipc"
-url_exitsocket = "ipc:///tmp/wordp.server.exit.ipc"
-url_worker_cmd = "ipc:///tmp/_wordp.worker.cmd.ipc"
+logger = logging.getLogger('wordpd')
 
-CUR_DIR = os.path.dirname(os.path.abspath(__file__))
-config_file = os.path.join(CUR_DIR, 'clients-exe.conf')
-monitor_files = [config_file, ]
+config_file = '/etc/wordp.ini'
 if not os.path.exists(config_file):
     raise Exception("Please configure your config file %s" % config_file)
 
-WORKER_NUM = 2
-thread_num_of_worker = 4
-worker_exe_path = None
+monitor_files = [config_file, ]
+
 def reload_config():
-    global worker_exe_path
-    with open(config_file) as f:
-        worker_exe_path = f.read().strip()
+    global CONF
+    global USE_MULTI_PROCESS
+    global url_worker
+    global url_client
+    global url_exitsocket
+    global url_worker_cmd
+    global WORKER_NUM
+    global thread_num_of_worker
+
+    CONF = dict4ini.DictIni(config_file)
+    USE_MULTI_PROCESS = CONF.wordp.use_multi_process
+    url_worker = CONF.wordp.url_worker
+    url_client = CONF.wordp.url_client
+    url_exitsocket = CONF.wordp.url_exitsocket
+    url_worker_cmd = CONF.wordp.url_worker_cmd
+    WORKER_NUM = CONF.wordp.worker_num
+    thread_num_of_worker = CONF.wordp.thread_num_of_worker
+
 reload_config()
 
 def worker_routine(context, idx):
@@ -56,52 +71,70 @@ def worker_routine(context, idx):
     from threadpool import ThreadPool, WorkRequest
     thread_pool = ThreadPool(thread_num_of_worker)
 
-    def thread_work(id_):
-        # create a process to execute the worker_exe
+    def thread_work(client_exe_path, msg):
+        # create a process to execute the client_exe
         # TODO: add execute timeout
-        _cmd = '%s %s' % (worker_exe_path, id_)
+        _cmd = '%s %s' % (client_exe_path, msg)
         cmd = WrapCommand(_cmd)
         cmd.start()
-        print 'Start command start %s' % _cmd
+        logger.debug('Start command start %s' % _cmd)
         cmd.join()
-        print 'Start command end %s' % _cmd
-        return cmd.returncode
+        logger.debug('Start command end %s' % _cmd)
+        return cmd
 
     def thread_work_cb(request, ret):
-        if ret == 0:
+        if ret.returncode == 0:
             # run cmd process in thread success
-            print "execute %s success %s" % (worker_exe_path, ret)
+            logger.debug("execute %s success %s" % (request.args[0], ret.returncode))
         else:
-            print "execute %s failed %s" % (worker_exe_path, ret)
+            logger.error("execute %s failed %s \n%s\n" % (request.args[0], ret.returncode, ' '.join(ret.results)))
 
     def handle_exception(request, exc_info):
         if not isinstance(exc_info, tuple):
             # Something is seriously wrong...
-            print request
-            print exc_info
+            logger.debug(request)
+            logger.debug(exc_info)
             raise SystemExit
-        print "**** Exception occured in request #%s: %s" % \
-                (request.requestID, exc_info)
+        logger.debug("**** Exception occured in request #%s: %s" % \
+                (request.requestID, exc_info))
 
-    def register_task(id_):
-        request = WorkRequest(thread_work, (id_, ), {}, callback=thread_work_cb,
+    def register_task(client_exe_path, msg):
+        request = WorkRequest(thread_work, (client_exe_path, msg), {}, callback=thread_work_cb,
                     exc_callback=handle_exception)
         thread_pool.putRequest(request)
+
+    def get_client_exe_path(client_name):
+        for client_id in CONF.clients.clients_list:
+            client_conf = getattr(CONF, client_id)
+            client_n = client_conf.name
+            if client_n == client_name:
+                return client_conf.exe_path
+        else:
+            return None
 
     while True:
         events = dict(poller.poll(2000))
         if events.get(socket0) == zmq.POLLIN:
             # Deal with message
-            msg  = socket0.recv()
+            _msg = socket0.recv()
 
-            print("Received request: [%s]\n" % (msg))
-            register_task(msg)
+            print("Received request: [%s]\n" % (_msg))
+            client_name = _msg.split()[0]
+            msg = _msg[len(client_name):].strip()
+            client_exe_path = get_client_exe_path(client_name)
+            logger.debug("Client name \"%s\" message: %s" %(client_name, msg))
+            logger.debug("Client exe path %s" % client_exe_path)
+            if client_exe_path is not None:
+                register_task(client_exe_path, msg)
+                #send reply back to client
+                socket0.send("OK")
+            else:
+                logger.debug("Can not execute client, because there have none clients in config file(%s), please check" % str(CONF.clients.clients_list))
+                socket0.send('FAILED')
 
-            #send reply back to client
-            socket0.send("OK")
         if events.get(socket_exit) == zmq.POLLIN:
             cmd = socket_exit.recv()
-            print '%s CMD %s' % (worker_id, cmd)
+            logger.debug('%s CMD %s' % (worker_id, cmd))
             sys.stdout.flush()
             if cmd == 'EXIT':
                 break
@@ -133,21 +166,21 @@ class BrokerProcess(multiprocessing.Process):
         workers = context.socket(zmq.DEALER)
         workers.bind(url_worker)
 
-        print "Start Router <--> Dealer mode"
+        logger.debug("Start Router <--> Dealer mode")
         ###!!! use my device function from green.device
         self.green_device(zmq.QUEUE, clients, workers)
 
         # Send exit signal to all workers
-        print "Send exit signal to all workers"
+        logger.debug("Send exit signal to all workers")
 
-        print "You exited!"
+        logger.debug("You exited!")
 
         clients.close()
         workers.close()
         context.term()
 
     def shutdown(self):
-        print "Shutdown initiated"
+        logger.debug("Shutdown initiated")
         self.exit.set()
 
     def green_device(self, device_type, isocket, osocket):
@@ -214,14 +247,14 @@ def main():
     process_pool = None
     worker_list = []
     if USE_MULTI_PROCESS:
-        print "Use process mode"
+        logger.debug("Use process mode")
         pool_size = WORKER_NUM
         process_pool = multiprocessing.Pool(processes=pool_size)
         for i in xrange(WORKER_NUM):
             process_pool.apply_async(worker_routine, (context, i, ))
     else:
         # To start a worker use:
-        print "Use thread mode"
+        logger.debug("Use thread mode")
         for i in xrange(WORKER_NUM):
             thread = threading.Thread(target=worker_routine, args=(context, i, ))
             thread.start()
@@ -247,30 +280,30 @@ def main():
             msg = exitsocket.recv()
             exitsocket.send("OK")
             break
-    print "Start exit form main ..."
-    print "Exit BrokerProcess ..."
+    logger.debug("Start exit form main ...")
+    logger.debug("Exit BrokerProcess ...")
     process.shutdown()
     process.join()
 
     workers_cmd_pub.send('EXIT')
 
-    print "Exit %s ..." % (USE_MULTI_PROCESS and "processes" or "threads")
+    logger.debug("Exit %s ..." % (USE_MULTI_PROCESS and "processes" or "threads"))
     if USE_MULTI_PROCESS:
         process_pool.close()
-        print "Close pool sucess"
+        logger.debug("Close pool sucess")
         process_pool.join()
-        print "wait process sucesss"
+        logger.debug("wait process sucesss")
     else:
         for worker in worker_list:
             worker.join()
-        print "wait threads success"
+        logger.debug("wait threads success")
 
     # We never get here but clean up anyhow
-    print 'context term...'
+    logger.debug('context term...')
     workers_cmd_pub.close()
     exitsocket.close()
     context.term()
-    print 'context term over'
+    logger.debug('context term over')
 
 if __name__ == "__main__":
     main()
