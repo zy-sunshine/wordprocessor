@@ -18,19 +18,20 @@ from werobot.robot import BaseRoBot
 import urllib2
 import json
 
-from wordpDB import DB
 import dict4ini
 from django.conf import settings
 from django.utils.translation import ugettext as _
 from myweixin.utils.zmqclient import send_message_to_task_manager
 
-db = DB()
+from wordp.modules import User, Option, Task
+from wordp.modules import session
+
 CONF = dict4ini.DictIni(settings.CONFIG_PATH)
 WEIXIN_TOKEN = CONF.weixin.token
 WEIXIN_APPID = CONF.weixin.appid
 WEIXIN_SECRET = CONF.weixin.secret
 WEIXIN_RETRY_TIME = CONF.weixin.retry_time
-WORKER_NAME = CONF.weixin.worker_name
+CLIENT_NAME_LIST = CONF.weixin.client_name_list
 ADMIN_MAIL = CONF.weixin.admin_mail
 
 class WeRoBot(BaseRoBot):
@@ -105,93 +106,95 @@ debug message.')
         self.response['Content-Type'] = 'application/xml'
         return create_reply(reply, message=message)
 
-    def get_user_info(self, openid):
-        #https://api.weixin.qq.com/cgi-bin/user/info?access_token=ACCESS_TOKEN&openid=OPENID
-        token = self.get_token()
-        req = urllib2.Request("https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s" % (token, openid))
-        try:
-            f = urllib2.urlopen(req)
-        except:
-            return None
-        else:
-            jsonstr = f.read().decode('utf-8')
-        jsonobj = json.loads(jsonstr)
-        if jsonobj.has_key('errcode'):
-            logger.error('Can not get user info errcode: %s errmsg: %s' % (jsonobj.get('errcode'), jsonobj.get('errmsg')))
-            return None
-        sql = u'INSERT INTO wordp_user (openid, nickname, sex, groupid, add_time, misc) VALUES ("%s", "%s", %s, %s, %s, \'%s\')' \
-                % (jsonobj.get('openid'), jsonobj.get('nickname'), jsonobj.get('sex'), 0, int(time.time()), jsonstr)
-        try:
-            cur = db.query(sql)
-            db.conn.commit()
-            cur.close()
-        except:
-            db.conn.rollback()
-            return None
-        else:
-            return jsonobj
+    ### Get user information is not support now in weixin, so we should wait some
+    #     day use it, and change the database option to sqlalchemy.
+    #def get_user_info(self, openid):
+    #    #https://api.weixin.qq.com/cgi-bin/user/info?access_token=ACCESS_TOKEN&openid=OPENID
+    #    token = self.get_token()
+    #    req = urllib2.Request("https://api.weixin.qq.com/cgi-bin/user/info?access_token=%s&openid=%s" % (token, openid))
+    #    try:
+    #        f = urllib2.urlopen(req)
+    #    except:
+    #        return None
+    #    else:
+    #        jsonstr = f.read().decode('utf-8')
+    #    jsonobj = json.loads(jsonstr)
+    #    if jsonobj.has_key('errcode'):
+    #        logger.error('Can not get user info errcode: %s errmsg: %s' % (jsonobj.get('errcode'), jsonobj.get('errmsg')))
+    #        return None
+    #    sql = u'INSERT INTO wordp_user (openid, nickname, sex, groupid, add_time, misc) VALUES ("%s", "%s", %s, %s, %s, \'%s\')' \
+    #            % (jsonobj.get('openid'), jsonobj.get('nickname'), jsonobj.get('sex'), 0, int(time.time()), jsonstr)
+    #    try:
+    #        cur = db.query(sql)
+    #        db.conn.commit()
+    #        cur.close()
+    #    except:
+    #        db.conn.rollback()
+    #        return None
+    #    else:
+    #        return jsonobj
 
-    def get_token(self):
-        #https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=APPID&secret=APPSECRET
-        sql = u'select option_value from wordp_options where option_name="%s"' % 'access_token'
-        cur = db.query(sql)
-        result=cur.fetchone()
-        if not result:
-            return self._update_token()
-        token = result['option_value']
-        sql = u'select option_value from wordp_options where option_name = "%s"' % 'access_token_ctime'
-        cur = db.query(sql, cur)
-        result = cur.fetchone()
-        cur.close()
-        if not result:
-            return self._update_token()
-        ctime = result['option_value']
+    #def get_token(self):
+    #    #https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=APPID&secret=APPSECRET
+    #    sql = u'select option_value from wordp_options where option_name="%s"' % 'access_token'
+    #    cur = db.query(sql)
+    #    result=cur.fetchone()
+    #    if not result:
+    #        return self._update_token()
+    #    token = result['option_value']
+    #    sql = u'select option_value from wordp_options where option_name = "%s"' % 'access_token_ctime'
+    #    cur = db.query(sql, cur)
+    #    result = cur.fetchone()
+    #    cur.close()
+    #    if not result:
+    #        return self._update_token()
+    #    ctime = result['option_value']
 
-        if int(time.time()) - int(ctime) + 60 > 7200:
-            return self._update_token()
-        else:
-            return token
+    #    if int(time.time()) - int(ctime) + 60 > 7200:
+    #        return self._update_token()
+    #    else:
+    #        return token
 
-    def _update_token(self):
-        req = urllib2.Request("https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s"
-                % (WEIXIN_APPID, WEIXIN_SECRET))
-        try:
-            f = urllib2.urlopen(req)
-        except:
-            return None
-        else:
-            token = f.read()
-        # update into db
-        token = json.loads(token)
+    #def _update_token(self):
+    #    req = urllib2.Request("https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s"
+    #            % (WEIXIN_APPID, WEIXIN_SECRET))
+    #    try:
+    #        f = urllib2.urlopen(req)
+    #    except:
+    #        return None
+    #    else:
+    #        token = f.read()
+    #    # update into db
+    #    token = json.loads(token)
 
-        sql = u'UPDATE `wordp_options` SET `option_value`="%s" WHERE `option_name`="%s"' % (str(token['access_token']), 'access_token')
-        try:
-            cur = db.query(sql)
-        except:
-            sql = u'INSERT INTO wordp_options (option_name, option_value) VALUES ( "%s", "%s")' % ('access_token', token['access_token'])
-            ret, cur = db.query(sql, cur)
-        else:
-            pass
+    #    sql = u'UPDATE `wordp_options` SET `option_value`="%s" WHERE `option_name`="%s"' % (str(token['access_token']), 'access_token')
+    #    try:
+    #        cur = db.query(sql)
+    #    except:
+    #        sql = u'INSERT INTO wordp_options (option_name, option_value) VALUES ( "%s", "%s")' % ('access_token', token['access_token'])
+    #        ret, cur = db.query(sql, cur)
+    #    else:
+    #        pass
 
-        sql = u'UPDATE wordp_options SET option_value="%s" WHERE option_name="%s"' % (int(time.time()), 'access_token_ctime')
-        try:
-            cur = db.query(sql, cur)
-        except:
-            sql = u'INSERT INTO wordp_options (option_name, option_value) VALUES ( "%s", "%s")' % ('access_token_ctime', int(time.time()))
-            cur = db.query(sql, cur)
-        else:
-            pass
+    #    sql = u'UPDATE wordp_options SET option_value="%s" WHERE option_name="%s"' % (int(time.time()), 'access_token_ctime')
+    #    try:
+    #        cur = db.query(sql, cur)
+    #    except:
+    #        sql = u'INSERT INTO wordp_options (option_name, option_value) VALUES ( "%s", "%s")' % ('access_token_ctime', int(time.time()))
+    #        cur = db.query(sql, cur)
+    #    else:
+    #        pass
 
-        try:
-            db.conn.commit()
-        except:
-            db.rollback()
+    #    try:
+    #        db.conn.commit()
+    #    except:
+    #        db.rollback()
 
-        return token['access_token']
+    #    return token['access_token']
 
 
-    def test(self):
-        self.get_user_info('o3bWXtyTB18MO5BnILDmwFvPPIjI')
+    #def test(self):
+    #    self.get_user_info('o3bWXtyTB18MO5BnILDmwFvPPIjI')
 
 class Home(BaseRequestHandler):
     def __init__(self):
@@ -204,18 +207,87 @@ class Home(BaseRequestHandler):
         self.werobot.text(Home.text)
 
     @staticmethod
-    def send_task_request(worker_name, taskid):
-        logger.debug('send_task_request %s %s' % (worker_name, taskid))
-        return send_message_to_task_manager(worker_name, taskid)
+    def send_task_request(client_name, taskid):
+        logger.debug('send_task_request %s %s' % (client_name, taskid))
+        return send_message_to_task_manager(client_name, taskid)
+
+    @staticmethod
+    def assign_content_to_client(user_id, user_groupid, client_name, content):
+        # Save url to taks list in database
+        # Frist, we should find url in database, which user insert in 7
+        # days, if find same url, we reject the request.(There have some
+        # `status` and `ret` check)
+        #sql = 'SELECT * from wordp_task where param1=\'%s\' and add_time>=%s \
+        #and uid=%s' \
+        #% (content, int(time.time())-3600*24*7, user_id)
+        t_before_7_day = int(time.time())-3600*24*7
+        result = session.query(Task).filter(Task.uid==user_id).filter(Task.add_time>=t_before_7_day).filter(Task.param1==content).filter(Task.client_name==client_name).scalar()
+        if result:
+            def common_resend():
+                # NOTE: send signal to clients
+                ret = Home.send_task_request(client_name, result.id)
+                if ret:
+                    return _('Your request have some error(status%s ret%s), \
+and we have sendther process request') % (result.status, result.ret)
+                else:
+                    return _('Can not deal with your request, (Something about client manager \
+error), se inforministrator %s. Thanks.') % ADMIN_MAIL
+
+            if (result.status == 0):
+                return common_resend()
+
+            elif (result.status > 0 and result.status < WEIXIN_RETRY_TIME):
+                # Resend the request
+                if result.ret != 0:
+                    return common_resend()
+                else:
+                    # process successfully
+                    return _('''Do not submit request duplicated(status%s ret%s), your \
+request been processed successfully.''') % (result.status, result.ret)
+            elif (result.status >= WEIXIN_RETRY_TIME):
+                # The task has been processed out of retry time, and we
+                # will not process it again
+                if result.status == -99:
+                    return _('''Your request is being processed, please wait.''')
+                if result.ret != 0:
+                    return _('''Your request has been processed, but not \
+success, is %s, please contact with administrator %s''') % (result.ret, ADMIN_MAIL)
+                else:
+                    return _('''Do not submit request duplicated(status%s ret%s), your \
+request been processed successfully.''') % (result.status, result.ret)
+
+            return _('''ERROR, duplicated URL.''')
+
+        # This is a new URL request, we should insert it into task list.
+        #sql = 'INSERT INTO wordp_task (uid, status, param1, param2, param3, \
+        #add_time) VALUES (%s, %s, \'%s\', \'%s\', \'%s\', %s)' % (user_id, 0,
+        #content, '', '', int(time.time()))
+        try:
+            task = Task(uid=user_id, status=0, param1=content, param2='', 
+                        param3='', add_time=int(time.time()), ret=0, retmsg='', client_name=client_name)
+            session.add(task)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error('Can not insert URL into database %s' % content)
+            logger.error(str(e))
+            return _('Can not deal with your request, (Something about database \
+error), se inform administrator %s. Thanks.') % ADMIN_MAIL
+        else:
+            # NOTE: send signal to clients
+            ret = Home.send_task_request(client_name, task.id)
+            if ret:
+                return _('We have received your URL request, please wait to processing (taskid%s).') % task.id
+            else:
+                return _('Can not deal with your request, (Something about client manager \
+error), se inform administrator %s. Thanks.') % ADMIN_MAIL
 
     @staticmethod
     def text(message):
         logger.debug(str(message))
         # Find uesr information from database, if not exists, ask user to send to me
-        sql = u'select id, openid from wordp_user where openid = "%s"' % message.FromUserName
-        cur = db.query(sql)
-        result=cur.fetchone()
-        cur.close()
+        result = session.query(User).filter(User.openid == message.FromUserName).scalar()
+        #sql = u'select id, openid from wordp_user where openid = "%s"' % message.FromUserName
         logger.debug('get user info from database %s' % str(result))
         # This text will be insert into database, so we must escape some
         # special character.
@@ -237,7 +309,8 @@ with administrator %s''') % ADMIN_MAIL
                 return ('''We have no information about you, please SEND me your \
 information at least your username with format id:<username> \
 thanks.''')
-        user_id = result['id']
+        user_id = result.id
+        user_groupid = result.groupid
         ## Now we can insert the url into task list
         # First we should check the url format
         from django.core.validators import URLValidator
@@ -248,86 +321,33 @@ thanks.''')
         except ValidationError, e:
             return _('''Your URL format is malformed, please give me a correct URL.''')
         else:
-            # Save url to taks list in database
-            # Frist, we should find url in database, which user insert in 7
-            # days, if find same url, we reject the request.(There have some
-            # `status` and `ret` check)
-            sql = 'SELECT * from wordp_task where param1=\'%s\' and add_time>=%s \
-            and uid=%s' \
-            % (content, int(time.time())-3600*24*7, user_id)
-            cur = db.query(sql)
-            result = cur.fetchone()
-            cur.close()
-            if result:
-                if (result['status'] > 0 and result['status'] < \
-                    WEIXIN_RETRY_TIME):
-                    # Resend the request
-                    if result['ret'] != 0:
-                        # NOTE: send signal to workers
-                        ret = Home.send_task_request(WORKER_NAME, result['id'])
-                        if ret:
-                            return _('Your request have some error(status%s ret%s), \
-and we have send another process request') % (result['status'], result['ret'])
-                        else:
-                            return _('Can not deal with your request, (Something about worker manager \
-error), please inform administrator %s. Thanks.') % ADMIN_MAIL
-                    else:
-                        # process successfully
-                        return _('''Do not submit request duplicated(status%s ret%s), your \
-request has been processed successfully.''') % (result['status'], result['ret'])
-                if (result['status'] >= WEIXIN_RETRY_TIME):
-                    # The task has been processed out of retry time, and we
-                    # will not process it again
-                    if result['status'] == 99:
-                        return _('''Your request is being processed, please wait.''')
-                    if result['ret'] != 0:
-                        return _('''Your request has been processed, but not \
-success, ret is %s, please contact with administrator %s''') % (result['ret'], ADMIN_MAIL)
-                    else:
-                        return _('''Do not submit request duplicated(status%s ret%s), your \
-request has been processed successfully.''') % (result['status'], result['ret'])
+            def get_client_conf_by_name(client_name):
+                for client_id in CONF.clients.clients_list:
+                    client_conf = getattr(CONF, client_id)
+                    if client_name == client_conf.name:
+                        return client_conf
+            retmsg = ''
 
-                return _('''ERROR, duplicated URL.''')
-
-            # This is a new URL request, we should insert it into task list.
-            sql = 'INSERT INTO wordp_task (uid, status, param1, param2, param3, \
-            add_time) VALUES (%s, %s, \'%s\', \'%s\', \'%s\', %s)' % (user_id, 0,
-            content, '', '', int(time.time()))
-            cur = None
-            try:
-                cur = db.query(sql)
-                db.conn.commit()
-                cur.close()
-            except Exception as e:
-                logger.error('Can not insert URL into database %s' % content)
-                logger.error(str(e))
-                db.conn.rollback()
-                return _('Can not deal with your request, (Something about database \
-error), please inform administrator %s. Thanks.') % ADMIN_MAIL
-            else:
-                # NOTE: send signal to workers
-                ret = Home.send_task_request(WORKER_NAME, cur.lastrowid)
-                if ret:
-                    return _('We have received your URL request, please wait to processsing (taskid%s).') % cur.lastrowid
-                else:
-                    return _('Can not deal with your request, (Something about worker manager \
-error), please inform administrator %s. Thanks.') % ADMIN_MAIL
+            for client_name in CLIENT_NAME_LIST:
+                client_conf = get_client_conf_by_name(client_name)
+                if user_groupid in client_conf.group_id_list:
+                    _retmsg = Home.assign_content_to_client(user_id, user_groupid, client_name, content)
+                    if hasattr(client_conf, 'hide_message') and client_conf.hide_message == True:
+                        pass
+                    else:
+                        retmsg = '%s\n%s' % (retmsg, _retmsg)
+            return retmsg.strip()
 
         return _(''' We have received your message, Thanks! (Nothing will happend) ''')
 
     @staticmethod
     def insert_user_info(id_, name, sex=0, jsonstr=''):
-        sql = u'INSERT INTO wordp_user (openid, nickname, sex, groupid, add_time, misc) VALUES ("%s", "%s", %s, %s, %s, \'%s\')' \
-                % (id_, name, sex, 0, int(time.time()), jsonstr)
-        try:
-            cur = db.query(sql)
-            db.conn.commit()
-            cur.close()
-        except:
-            db.conn.rollback()
-            return None
-        else:
-            return name
+        #sql = u'INSERT INTO wordp_user (openid, nickname, sex, groupid, add_time, misc) VALUES ("%s", "%s", %s, %s, %s, \'%s\')' \
+        #        % (id_, name, sex, 0, int(time.time()), jsonstr)
+        user = User(openid=id_, nickname=name, sex=sex, groupid=0, add_time=int(time.time()), misc=jsonstr)
+        session.add(user)
+        session.commit()
+        return name
 
     def GET(self):
         # do the request logging
@@ -390,6 +410,7 @@ testxml = u'''<xml><ToUserName><![CDATA[gh_fe4082a99198]]></ToUserName>
 <MsgId>5960655175035689598</MsgId>
 </xml>
 '''
+#<Content><![CDATA[id:sunblackshine]]></Content>
 
 class Test(BaseRequestHandler):
     def GET(self):

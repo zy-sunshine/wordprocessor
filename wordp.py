@@ -103,14 +103,14 @@ def worker_routine(context, idx):
                     exc_callback=handle_exception)
         thread_pool.putRequest(request)
 
-    def get_client_exe_path(client_name):
+    def get_client_exe_paths(client_name):
+        client_exe_paths = []
         for client_id in CONF.clients.clients_list:
             client_conf = getattr(CONF, client_id)
             client_n = client_conf.name
             if client_n == client_name:
-                return client_conf.exe_path
-        else:
-            return None
+                client_exe_paths.append(client_conf.exe_path)
+        return client_exe_paths
 
     while True:
         events = dict(poller.poll(2000))
@@ -121,11 +121,12 @@ def worker_routine(context, idx):
             print("Received request: [%s]\n" % (_msg))
             client_name = _msg.split()[0]
             msg = _msg[len(client_name):].strip()
-            client_exe_path = get_client_exe_path(client_name)
+            exe_paths = get_client_exe_paths(client_name)
             logger.debug("Client name \"%s\" message: %s" %(client_name, msg))
-            logger.debug("Client exe path %s" % client_exe_path)
-            if client_exe_path is not None:
-                register_task(client_exe_path, msg)
+            logger.debug("Client exe path %s" % exe_paths)
+            if exe_paths is not None:
+                for exe_path in exe_paths:
+                    register_task(exe_path, msg)
                 #send reply back to client
                 socket0.send("OK")
             else:
