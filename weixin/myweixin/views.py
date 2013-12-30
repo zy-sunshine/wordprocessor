@@ -228,10 +228,10 @@ class Home(BaseRequestHandler):
                 ret = Home.send_task_request(client_name, result.id)
                 if ret:
                     return _('Your request have some error(status%s ret%s), \
-and we have sendther process request') % (result.status, result.ret)
+and we have send the process request') % (result.status, result.ret)
                 else:
                     return _('Can not deal with your request, (Something about client manager \
-error), se inforministrator %s. Thanks.') % ADMIN_MAIL
+error), please inform administrator %s. Thanks.') % ADMIN_MAIL
 
             if (result.status == 0):
                 return common_resend()
@@ -272,7 +272,7 @@ request been processed successfully.''') % (result.status, result.ret)
             logger.error('Can not insert URL into database %s' % content)
             logger.error(str(e))
             return _('Can not deal with your request, (Something about database \
-error), se inform administrator %s. Thanks.') % ADMIN_MAIL
+error), please inform administrator %s. Thanks.') % ADMIN_MAIL
         else:
             # NOTE: send signal to clients
             ret = Home.send_task_request(client_name, task.id)
@@ -280,7 +280,7 @@ error), se inform administrator %s. Thanks.') % ADMIN_MAIL
                 return _('We have received your URL request, please wait to processing (taskid%s).') % task.id
             else:
                 return _('Can not deal with your request, (Something about client manager \
-error), se inform administrator %s. Thanks.') % ADMIN_MAIL
+error), please inform administrator %s. Thanks.') % ADMIN_MAIL
 
     @staticmethod
     def text(message):
