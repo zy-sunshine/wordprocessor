@@ -38,8 +38,9 @@ start()
    $PYTHON $proxy 1>$log  2>&1 &
    touch $lock
    sleep 1
-   for file in /tmp/wordp.client.ipc /tmp/wordp.server.exit.ipc; do
+   for file in /tmp/wordp.client.ipc; do
       chmod g+w $file
+      chmod o+w $file
    done
 }
 

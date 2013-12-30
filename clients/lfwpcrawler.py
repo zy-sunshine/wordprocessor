@@ -422,7 +422,7 @@ def main():
 
     #sql = 'select t.*, u.nickname from wordp_task t LEFT JOIN wordp_user u ON \
     #(t.uid = u.id) where t.id=%s' % g_id_
-    result = session.query(Task, User.nickname).join(User, User.id == Task.uid).all()
+    result = session.query(Task, User.nickname).join(User, User.id == Task.uid).filter(Task.id==g_id_).all()
     if result:
         url = result[0].Task.param1.strip()
         author = result[0].nickname.strip()

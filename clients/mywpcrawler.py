@@ -47,6 +47,11 @@ CLIENT_NAME = CONF.client0.name
 from wordp.modules import User, Task
 from wordp.modules import session
 
+class CanNotDownloadException(Exception):
+    pass
+class CanNotUploadException(Exception):
+    pass
+
 def copy_to_web_server(img_path, hex_dir='pre', check_unique=False):
     '''if <check_unique> is True, we will check whether the directory is exists, or we
     just use the <hex_dir> to store the image.
@@ -202,9 +207,6 @@ def process_content(content, url):
     classify.process()
     processor_name = classify.proc.get_name()
     return processor_name, classify.proc;
-
-class CanNotDownloadException(Exception):
-    pass
 
 def upload_file_to_wp(client, filepath):
     # prepare metadata
@@ -401,7 +403,7 @@ def main():
 
     #sql = 'select t.*, u.nickname from wordp_task t LEFT JOIN wordp_user u ON \
     #(t.uid = u.id) where t.id=%s' % g_id_
-    result = session.query(Task, User.nickname).join(User, User.id == Task.uid).all()
+    result = session.query(Task, User.nickname).join(User, User.id == Task.uid).filter(Task.id == g_id_).all()
     if result:
         url = result[0].Task.param1.strip()
         author = result[0].nickname.strip()
