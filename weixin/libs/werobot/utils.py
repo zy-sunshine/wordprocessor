@@ -1,40 +1,65 @@
-import sys
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, unicode_literals
+import hashlib
+
 import re
 import random
-import time
-import logging
 import json
+import six
+import time
 
-try:
-    import curses
-    assert curses
-except ImportError:
-    curses = None
+from hashlib import sha1
 
-py3k = sys.version_info >= (3, 0, 0)
+string_types = (six.string_types, six.text_type, six.binary_type)
 
-if py3k:
-    basestring = unicode = str
+
+def get_signature(token, timestamp, nonce, *args):
+    sign = [token, timestamp, nonce] + list(args)
+    sign.sort()
+    sign = to_binary(''.join(sign))
+    return hashlib.sha1(sign).hexdigest()
+
+
+def check_signature(token, timestamp, nonce, signature):
+    sign = get_signature(token, timestamp, nonce)
+    return sign == signature
 
 
 def check_token(token):
     return re.match('^[A-Za-z0-9]{3,32}$', token)
 
 
-def to_unicode(value):
-    if isinstance(value, unicode):
+def to_text(value, encoding="utf-8"):
+    if isinstance(value, six.text_type):
         return value
-    if isinstance(value, basestring):
-        return value.decode('utf-8')
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, bytes):
-        return value.decode('utf-8')
-    return value
+    if isinstance(value, six.binary_type):
+        return value.decode(encoding)
+    return six.text_type(value)
 
 
-def isstring(value):
-    return isinstance(value, basestring)
+def to_binary(value, encoding="utf-8"):
+    if isinstance(value, six.binary_type):
+        return value
+    if isinstance(value, six.text_type):
+        return value.encode(encoding)
+    return six.binary_type(value)
+
+
+def is_string(value):
+    return isinstance(value, string_types)
+
+
+def byte2int(s, index=0):
+    """Get the ASCII int value of a character in a string.
+
+    :param s: a string
+    :param index: the position of desired character
+
+    :return: ASCII int value
+    """
+    if six.PY2:
+        return ord(s[index])
+    return s[index]
 
 
 def generate_token(length=''):
@@ -51,79 +76,37 @@ def generate_token(length=''):
     return ''.join(token)
 
 
-def enable_pretty_logging(logger, level='info'):
-    """Turns on formatted logging output as configured.
-    """
-    logger.setLevel(getattr(logging, level.upper()))
-
-    if not logger.handlers:
-        # Set up color if we are in a tty and curses is installed
-        color = False
-        if curses and sys.stderr.isatty():
-            try:
-                curses.setupterm()
-                if curses.tigetnum("colors") > 0:
-                    color = True
-            except:
-                pass
-        channel = logging.StreamHandler()
-        channel.setFormatter(_LogFormatter(color=color))
-        logger.addHandler(channel)
-
-
-class _LogFormatter(logging.Formatter):
-    def __init__(self, color, *args, **kwargs):
-        logging.Formatter.__init__(self, *args, **kwargs)
-        self._color = color
-        if color:
-            # The curses module has some str/bytes confusion in
-            # python3.  Until version 3.2.3, most methods return
-            # bytes, but only accept strings.  In addition, we want to
-            # output these strings with the logging module, which
-            # works with unicode strings.  The explicit calls to
-            # unicode() below are harmless in python2 but will do the
-            # right conversion in python 3.
-            fg_color = (curses.tigetstr("setaf") or
-                        curses.tigetstr("setf") or "")
-            if (3, 0) < sys.version_info < (3, 2, 3):
-                fg_color = unicode(fg_color, "ascii")
-            self._colors = {
-                logging.DEBUG: unicode(curses.tparm(fg_color, 4),
-                                       "ascii"),  # Blue
-                logging.INFO: unicode(curses.tparm(fg_color, 2),
-                                      "ascii"),  # Green
-                logging.WARNING: unicode(curses.tparm(fg_color, 3),
-                                         "ascii"),  # Yellow
-                logging.ERROR: unicode(curses.tparm(fg_color, 1),
-                                       "ascii"),  # Red
-            }
-            self._normal = unicode(curses.tigetstr("sgr0"), "ascii")
-
-    def format(self, record):
-        try:
-            record.message = record.getMessage()
-        except Exception as e:
-            record.message = "Bad message (%r): %r" % (e, record.__dict__)
-        record.asctime = time.strftime(
-            "%y%m%d %H:%M:%S", self.converter(record.created))
-        prefix = '[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d]' % \
-                 record.__dict__
-        if self._color:
-            prefix = (self._colors.get(record.levelno, self._normal) +
-                      prefix + self._normal)
-        formatted = prefix + " " + record.message
-        if record.exc_info:
-            if not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
-        if record.exc_text:
-            formatted = formatted.rstrip() + "\n" + record.exc_text
-        return formatted.replace("\n", "\n    ")
-
-
 def json_loads(s):
-    s = to_unicode(s)
+    s = to_text(s)
     return json.loads(s)
 
 
 def json_dumps(d):
     return json.dumps(d)
+
+
+def pay_sign_dict(appid, pay_sign_key, add_noncestr=True, add_timestamp=True, add_appid=True, **kwargs):
+    """
+    支付参数签名
+    """
+    assert pay_sign_key, "PAY SIGN KEY IS EMPTY"
+
+    if add_appid:
+        kwargs.update({'appid': appid})
+
+    if add_noncestr:
+        kwargs.update({'noncestr': generate_token()})
+
+    if add_timestamp:
+        kwargs.update({'timestamp': int(time.time())})
+
+    params = kwargs.items()
+
+    _params = [(k.lower(), v) for k, v in kwargs.items() if k.lower() != "appid"] + [('appid', appid), ('appkey', pay_sign_key)]
+    _params.sort()
+
+    sign = sha1('&'.join(["%s=%s" % (str(p[0]), str(p[1])) for p in _params])).hexdigest()
+    sign_type = 'SHA1'
+
+    return dict(params), sign, sign_type
+

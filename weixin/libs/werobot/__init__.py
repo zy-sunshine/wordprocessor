@@ -1,8 +1,10 @@
-__version__ = '0.4.1'
+__version__ = '0.7.0'
 __author__ = 'whtsky'
 __license__ = 'MIT'
 
+__all__ = ["WeRoBot"]
+
 try:
-    from .robot import WeRoBot
-except:
+    from werobot.robot import WeRoBot
+except ImportError:
     pass

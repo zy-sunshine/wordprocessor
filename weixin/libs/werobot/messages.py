@@ -1,68 +1,91 @@
 # -*- coding: utf-8 -*-
-from .utils import to_unicode
+
+MESSAGE_TYPES = {}
+
+
+def handle_for_type(type):
+    def register(f):
+        MESSAGE_TYPES[type] = f
+        return f
+    return register
+
 
 class WeChatMessage(object):
-    def __init__(self, **kwargs):
-        #if 'MsgId' in kwargs:
-        #    self.MsgId = int(kwargs['MsgId'])
-        #if 'MsgType' in kwargs:
-        #    self.MsgType = kwargs['MsgType']
-        #if 'ToUserName' in kwargs:
-        #    self.ToUserName = kwargs['ToUserName']
-        #if 'FromUserName' in kwargs:
-        #    self.FromUserName = kwargs['FromUserName']
-        #if 'CreateTime' in kwargs:
-        #    self.CreateTime = int(kwargs['CreateTime'])
-        #self.raw = kwargs.get('raw', '')
-        for k, v in kwargs.items():
-            setattr(self, k ,v)
-    def __unicode__(self):
-        content = u''
-        for k, v in vars(self).items():
-            print type(k)
-            content = u'%sself.%s = %s\n' % (content, to_unicode(k), to_unicode(v))
+    def __init__(self, message):
+        self.id = int(message.pop("MsgId", 0))
+        self.target = message.pop("ToUserName", None)
+        self.source = message.pop('FromUserName', None)
+        self.time = int(message.get('CreateTime', 0))
+        self.__dict__.update(message)
 
-        return content
 
+@handle_for_type("text")
 class TextMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(TextMessage, self).__init__(**kwargs)
+    def __init__(self, message):
+        self.content = message.pop("Content")
+        super(TextMessage, self).__init__(message)
 
+
+@handle_for_type("image")
 class ImageMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(ImageMessage, self).__init__(**kwargs)
+    def __init__(self, message):
+        self.img = message.pop("PicUrl")
+        super(ImageMessage, self).__init__(message)
 
 
+@handle_for_type("location")
 class LocationMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(LocationMessage, self).__init__(**kwargs)
-        self.Location_X = float(self.Location_X)
-        self.Location_Y = float(self.Location_Y)
+    def __init__(self, message):
+        location_x = message.pop('Location_X')
+        location_y = message.pop('Location_Y')
+        self.location = (float(location_x), float(location_y))
+        self.scale = int(message.pop('Scale'))
+        self.label = message.pop('Label')
+        super(LocationMessage, self).__init__(message)
 
+
+@handle_for_type("link")
 class LinkMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(LinkMessage, self).__init__(**kwargs)
+    def __init__(self, message):
+        self.title = message.pop('Title')
+        self.description = message.pop('Description')
+        self.url = message.pop('Url')
+        super(LinkMessage, self).__init__(message)
 
 
+@handle_for_type("event")
 class EventMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(EventMessage, self).__init__(**kwargs)
-        # TODO: event type
-        #assert self.MsgType in ['subscribe', 'unsubscribe', 'click']
-        #if self.MsgType == 'click':
-        #    self.EventKey = kwargs["EventKey"]
+    def __init__(self, message):
+        message.pop("type")
+        self.type = message.pop("Event").lower()
+        if self.type == "click":
+            self.key = message.pop('EventKey')
+        elif self.type == "location":
+            self.latitude = float(message.pop("Latitude"))
+            self.longitude = float(message.pop("Longitude"))
+            self.precision = float(message.pop("Precision"))
+        super(EventMessage, self).__init__(message)
 
 
+@handle_for_type("voice")
 class VoiceMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(VoiceMessage, self).__init__(**kwargs)
+    def __init__(self, message):
+        self.media_id = message.pop('MediaId')
+        self.format = message.pop('Format')
+        self.recognition = message.pop('Recognition')
+        super(VoiceMessage, self).__init__(message)
+
+
+@handle_for_type("video")
+@handle_for_type("shortvideo")
+class VideoMessage(WeChatMessage):
+    def __init__(self, message):
+        self.media_id = message.pop('MediaId')
+        self.thumb_media_id = message.pop('ThumbMediaId')
+        super(VideoMessage, self).__init__(message)
 
 
 class UnknownMessage(WeChatMessage):
-    def __init__(self, raw):
-        self.raw = raw
-
-class VideoMessage(WeChatMessage):
-    def __init__(self, **kwargs):
-        super(VideoMessage, self).__init__(**kwargs)
-
+    def __init__(self, message):
+        self.type = 'unknown'
+        super(UnknownMessage, self).__init__(message)
