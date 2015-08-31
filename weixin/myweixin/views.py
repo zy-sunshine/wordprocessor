@@ -1,4 +1,5 @@
 #encoding=utf-8
+import sys
 from django.http import HttpResponse
 from django.core.exceptions import PermissionDenied
 import datetime, time
@@ -7,8 +8,8 @@ from base import BaseRequestHandler
 import werobot
 import hashlib
 from werobot.parser import parse_user_msg
-from werobot.reply import create_reply
-from werobot.utils import py3k
+from werobot.replies import create_reply
+py3k = sys.version_info >= (3, 0, 0)
 
 import logging
 # Get an instance of a logger
@@ -42,6 +43,7 @@ class WeRoBot(BaseRoBot):
         self.debug = False
 
     def GET(self):
+        return self.POST()
         method = getattr(self.request, self.request.method)
         if not self.debug and not self.request.GET.get('debug'):
             if not self.check_signature(
@@ -78,13 +80,13 @@ class WeRoBot(BaseRoBot):
         try:
             message = parse_user_msg(body)
         except Exception as e:
-            logger.error('Can not parse body: %s' % body)
+            logger.error('Can not parse body: "%s"' % body)
         else:
             logger.debug('parse body success')
-        logging.info("Receive message %s" % message.MsgId)
+        #logging.debug("Receive message %s" % message.MsgId)
 
         # Find a user from database, if not exists pull user information form weixin
-        #sql = u'select id from wordp_user where openid = "%s"' % message.FromUserName
+        #sql = u'select id from wordp_user where openid = "%s"' % message.source
         #cur = db.query(sql)
         #result=cur.fetchone()
         #logger.debug('get user info from database %s' % str(result))
@@ -93,11 +95,12 @@ class WeRoBot(BaseRoBot):
         # it's name manually, oops
         #if not result:
         #    #logger.debug('Can not find user info in database, request it from weixin server!')
-        #    self.get_user_info(message.FromUserName)
+        #    self.get_user_info(message.source)
 
 
         #cursor.execute('INSERT INTO wordp_task (uid, status, param1, add_time) VALUES()'
         reply = self.get_reply(message)
+        print reply
         if not reply:
             self.logger.warning("No handler responded message %s"
                                 % message)
@@ -286,18 +289,21 @@ error), please inform administrator %s. Thanks.') % ADMIN_MAIL
     def text(message):
         logger.debug(str(message))
         # Find uesr information from database, if not exists, ask user to send to me
-        result = session.query(User).filter(User.openid == message.FromUserName).scalar()
-        #sql = u'select id, openid from wordp_user where openid = "%s"' % message.FromUserName
+        logger.debug(dir(message))
+        logger.debug(message.source)
+        logger.debug(message.target)
+        result = session.query(User).filter(User.openid == message.source).scalar()
+        #sql = u'select id, openid from wordp_user where openid = "%s"' % message.source
         logger.debug('get user info from database %s' % str(result))
         # This text will be insert into database, so we must escape some
         # special character.
         #import MySQLdb
         #content = MySQLdb.escape_string(message.Content)
-        content = message.Content
+        content = message.content
         if not result:
             if content.startswith('id:'):
                 # insert uesr info into database, and send hello message.
-                ret = Home.insert_user_info(message.FromUserName, content[len('id:'):].strip())
+                ret = Home.insert_user_info(message.source, content[len('id:'):].strip())
                 if ret is not None:
                     return _('''Success insert your information, and you are at \
 default group to post articles to Linuxfans, and if you want to \
@@ -426,4 +432,30 @@ class Test(BaseRequestHandler):
         from werobot.messages import TextMessage
         t = testxml
         self.write(Home.text(parse_user_msg(t)))
+
+rconn = settings.RCONN_QQBOT
+class QQView(BaseRequestHandler):
+    def GET(self):
+        resp = {}
+        #self.write(self.request.GET.get('cmd'))
+        cmd = self.request.GET.get('cmd')
+        if cmd == 'querysc':
+            self.getbystemcode(resp, self.request.GET.get('sc'),
+                self.request.GET.get('nick'), self.request.GET.get('uid'))
+        elif cmd == 'querymsg':
+            self.getmsgbyid(resp, self.request.GET.get('id'))
+
+        self.write(json.dumps(resp, ensure_ascii=False).encode('utf8'))
+
+    def getmsgbyid(self, resp, id_):
+        curlen = rconn.llen('qqbotmsg')
+        if id_ < curlen:
+            resp['msglst'] = rconn.lrange('qqbotmsg', id_, curlen)
+        else: resp['msglst'] = []
+
+    def getbystemcode(self, resp, stemcode, nick, uid):
+        stemcode = stemcode.strip().upper()
+        qqmsg = rconn.hget(stemcode, 'qqmsg')
+        if qqmsg: resp['qqmsg'] = r'@%s %s %s' % (nick, stemcode, qqmsg)
+        else: resp['qqmsg'] = r'@%s 目前没有 %s 的量化信息' % (nick, stemcode)
 

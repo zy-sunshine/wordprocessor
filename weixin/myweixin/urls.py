@@ -7,6 +7,7 @@ urlpatterns = patterns('',
     # Examples:
     url(r'^$', 'myweixin.views.Home', name='home'),
     url(r'^test$', 'myweixin.views.Test', name='test'),
+    url(r'^qq$', 'myweixin.views.QQView', name='test'),
     # url(r'^blog/', include('blog.urls')),
 
     #url(r'^admin/', include(admin.site.urls)),

@@ -114,7 +114,7 @@ LOGGING = {
         'rotatefile':{
             'level': 'DEBUG',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': '/var/www/weixin/logs/myweixin.log',
+            'filename': '/var/www_hackos/weixin/logs/myweixin.log',
             'maxBytes': 5*1024*1024,
             'backupCount': 5,
             'formatter': 'verbose'
@@ -148,3 +148,17 @@ LOGGING = {
         }
     }
 }
+
+import redis
+REDIS_QQBOT_CONF = {
+    'HOST': '127.0.0.1',
+    'PORT': 6379,
+    'NAME': 5,
+    'PASSWORD': '1234zxc'
+    }
+
+RCONN_QQBOT = redis.Redis(host=REDIS_QQBOT_CONF.get('HOST'),
+    port=REDIS_QQBOT_CONF.get('PORT'),
+    db=REDIS_QQBOT_CONF.get('NAME'),
+    password=REDIS_QQBOT_CONF.get('PASSWORD'))
+
