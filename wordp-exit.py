@@ -4,6 +4,7 @@ import zmq
 context = zmq.Context()
 
 client = context.socket(zmq.REQ)
-client.connect("ipc:///tmp/wordp.server.exit.ipc")
-client.send("EXIT")
+ret = client.connect("ipc:///tmp/wordp.server.exit.ipc")
+if ret:
+    client.send("EXIT")
 

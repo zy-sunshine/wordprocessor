@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os, sys
 apache_configuration= os.path.dirname(__file__)
 project = os.path.dirname(apache_configuration)
